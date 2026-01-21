@@ -47,7 +47,7 @@ typedef struct {
 ]])
 
 ---@class frecency_entry_t
----@field path string
+---@field path integer[]
 ---@field deadline number
 
 ---@class frecency_mmap_t
@@ -71,23 +71,22 @@ local to_score = function(deadline) return math.exp(LAMBDA * (deadline - os.time
 local to_deadline = function(score) return os.time() + math.log(score) / LAMBDA end
 
 ---@param path string
----@return number|nil index (0-based)
+---@return integer? index (0-based)
 local find_entry = function(path)
-  if not data then return nil end
+  if not data then return end
   for i = 0, data.count - 1 do
     if ffi.string(data.entries[i].path) == path then return i end
   end
-  return nil
 end
 
 local load_from_file = function()
   if not data then return end
   local f = io.open(PERSIST_FILE, 'r')
   if not f then return end
-  for line in f:lines() do
+  for line in f:lines() do ---@cast line string
     local len_str, rest = line:match('^(%d+) (.*)$')
     if len_str and rest then
-      local len = tonumber(len_str)
+      local len = tonumber(len_str) ---@as integer
       local path = rest:sub(1, len)
       local deadline = tonumber(rest:sub(len + 2))
       if path and deadline and data.count < MAX_ENTRIES then
@@ -119,12 +118,10 @@ local save_to_file = function()
   end
 end
 
-local evict_lowest = function()
+local lowest = function()
   if not data or data.count == 0 then return end
-
   local min_idx = 0
   local min_score = to_score(data.entries[0].deadline)
-
   for i = 1, data.count - 1 do
     local score = to_score(data.entries[i].deadline)
     if score < min_score then
@@ -132,9 +129,22 @@ local evict_lowest = function()
       min_score = score
     end
   end
+  return min_idx
+end
 
-  data.entries[min_idx] = data.entries[data.count - 1]
+---@param idx integer
+---@return boolean? success
+local evict = function(idx)
+  if not data or data.count == 0 then return end
+  data.entries[idx] = data.entries[data.count - 1]
   data.count = data.count - 1
+  return true
+end
+
+---@return boolean? success
+local evict_lowest = function()
+  local idx = lowest()
+  if idx then return evict(idx) end
 end
 
 ---@return boolean success
@@ -182,6 +192,8 @@ M.visit_buf = function(buf, value)
   M.visit(file, value)
 end
 
+M.find_entry = find_entry
+
 ---@param path string
 ---@param value? number
 M.visit = function(path, value)
@@ -213,6 +225,15 @@ M.get = function(path)
   if not idx then return 0 end
 
   return to_score(data.entries[idx].deadline)
+end
+
+---@param path string
+---@return boolean?
+M.del = function(path)
+  if not initialized or not data then return end
+  local idx = find_entry(path)
+  if not idx then return false end
+  return evict(idx)
 end
 
 ---@param n? number max results
