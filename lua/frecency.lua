@@ -236,12 +236,9 @@ M.del = function(path)
   return evict(idx)
 end
 
----@param n? number max results
 ---@return {path:string, score:number}[]
-M.list = function(n)
+M.list = function()
   if not initialized or not data then return {} end
-
-  n = n or data.count
   local results = {}
 
   for i = 0, data.count - 1 do
@@ -252,13 +249,7 @@ M.list = function(n)
   end
 
   table.sort(results, function(a, b) return a.score > b.score end)
-
-  local slice_end = math.min(n, #results)
-  local sliced = {}
-  for i = 1, slice_end do
-    sliced[i] = results[i]
-  end
-  return sliced
+  return results
 end
 
 M.sync = function()
